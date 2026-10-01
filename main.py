@@ -85,3 +85,27 @@ def add_expense(body: dict):
                 (spent_on, amount, category.strip()),
             )
     return {"ok": True}
+
+
+@app.get("/totals")
+def totals():
+    """Сумма трат по каждой категории, сначала самые большие."""
+    # Подключаемся к базе home.
+    # Пользователь — текущий системный, пароль в файле не храним.
+    # with закроет соединение сам.
+    with psycopg.connect("dbname=home") as conn:
+        with conn.cursor() as cur:
+            # В запросе нет данных от пользователя — плейсхолдеры не нужны.
+            cur.execute(
+                """
+                SELECT category, SUM(amount)
+                FROM expenses
+                GROUP BY category
+                ORDER BY SUM(amount) DESC
+                """
+            )
+            rows = []
+            for category, total in cur:
+                # SUM приходит как Decimal, в JSON нужен float.
+                rows.append({"category": category, "total": float(total)})
+            return rows
