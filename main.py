@@ -15,25 +15,37 @@ def root():
 
 
 @app.get("/expenses")
-def expenses():
-    """Все траты: id, дата, сумма, категория."""
+def expenses(category: str | None = None):
+    """Все траты или только одна категория, если она передана в адресе."""
     # Подключаемся к базе home.
     # Пользователь — текущий системный, пароль в файле не храним.
     # with закроет соединение сам.
     with psycopg.connect("dbname=home") as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, spent_on, amount, category FROM expenses ORDER BY id"
-            )
+            # Без параметра — все строки. С ?category=... фильтр через %s.
+            if category:
+                cur.execute(
+                    """
+                    SELECT id, spent_on, amount, category
+                    FROM expenses
+                    WHERE category = %s
+                    ORDER BY id
+                    """,
+                    (category,),
+                )
+            else:
+                cur.execute(
+                    "SELECT id, spent_on, amount, category FROM expenses ORDER BY id"
+                )
             rows = []
-            for expense_id, spent_on, amount, category in cur:
+            for expense_id, spent_on, amount, row_category in cur:
                 # Дата и Decimal сами в JSON не превращаются.
                 rows.append(
                     {
                         "id": expense_id,
                         "spent_on": str(spent_on),
                         "amount": float(amount),
-                        "category": category,
+                        "category": row_category,
                     }
                 )
             return rows
