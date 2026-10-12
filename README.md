@@ -19,3 +19,15 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 - `GET /totals` — сумма по категориям
 - `POST /expenses` — записать трату
 - `/docs` — страница с описанием адресов
+
+## Тесты
+
+Тесты не ходят в живую базу `home`.
+
+```bash
+cd ~/projects/api
+source .venv/bin/activate
+python -m pytest -q
+```
+
+Ожидание: `5 passed`. Warning про `httpx` не ломает тесты.
