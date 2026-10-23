@@ -1,4 +1,5 @@
 # API: проверка, что сервер жив, список трат и новая трата (база home).
+import os
 import psycopg
 from datetime import date
 
@@ -6,6 +7,12 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 app = FastAPI()
+
+
+def database_url():
+    """Адрес базы из DATABASE_URL. Если переменной нет — локальная база home."""
+    # Пароль в файл не пишем и адрес в лог не печатаем.
+    return os.environ.get("DATABASE_URL", "dbname=home")
 
 
 @app.get("/")
@@ -20,7 +27,7 @@ def expenses(category: str | None = None):
     # Подключаемся к базе home.
     # Пользователь — текущий системный, пароль в файле не храним.
     # with закроет соединение сам.
-    with psycopg.connect("dbname=home") as conn:
+    with psycopg.connect(database_url()) as conn:
         with conn.cursor() as cur:
             # Без параметра — все строки. С ?category=... фильтр через %s.
             if category:
@@ -77,7 +84,7 @@ def add_expense(body: dict):
     # Подключаемся к базе home.
     # Пользователь — текущий системный, пароль в файле не храним.
     # with закроет соединение и сохранит INSERT, если ошибок не было.
-    with psycopg.connect("dbname=home") as conn:
+    with psycopg.connect(database_url()) as conn:
         with conn.cursor() as cur:
             # Плейсхолдеры %s: значения передаём отдельно, не склеиваем запрос.
             cur.execute(
@@ -93,7 +100,7 @@ def totals():
     # Подключаемся к базе home.
     # Пользователь — текущий системный, пароль в файле не храним.
     # with закроет соединение сам.
-    with psycopg.connect("dbname=home") as conn:
+    with psycopg.connect(database_url()) as conn:
         with conn.cursor() as cur:
             # В запросе нет данных от пользователя — плейсхолдеры не нужны.
             cur.execute(
