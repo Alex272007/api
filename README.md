@@ -31,3 +31,21 @@ python -m pytest -q
 ```
 
 Ожидание: `5 passed`. Warning про `httpx` не ломает тесты.
+
+## Docker
+
+Пароль в репозиторий не кладётся. В команде и в `.env.example` стоит слово `ПАРОЛЬ`: его подставляет человек.
+
+Сборка:
+
+```bash
+sudo docker build -t expenses-api .
+```
+
+Запуск в сети компьютера, с адресом базы в `DATABASE_URL`:
+
+```bash
+sudo docker run --network host -e DATABASE_URL='postgresql://aleks:ПАРОЛЬ@127.0.0.1:5432/home' expenses-api
+```
+
+Адрес вида `postgresql://aleks:ПАРОЛЬ@127.0.0.1:5432/home`. Без переменной программа по-прежнему берёт `dbname=home`. Остановка: Ctrl+C.
