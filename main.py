@@ -1,4 +1,4 @@
-# API: проверка, что сервер жив, список трат и новая трата (база home).
+# API: проверка, что сервер жив, список трат, новая трата и удаление (база home).
 import os
 import psycopg
 from datetime import date
@@ -116,3 +116,26 @@ def totals():
                 # SUM приходит как Decimal, в JSON нужен float.
                 rows.append({"category": category, "total": float(total)})
             return rows
+
+
+@app.delete("/expenses/{expense_id}")
+def delete_expense(expense_id: int):
+    """Удалить одну трату по id. Нет такой строки — 404."""
+    # Подключаемся к базе home.
+    # Пользователь — текущий системный, пароль в файле не храним.
+    # with закроет соединение и сохранит DELETE, если ошибок не было.
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            # Плейсхолдер %s: id передаём отдельно, не склеиваем запрос.
+            cur.execute(
+                "DELETE FROM expenses WHERE id = %s",
+                (expense_id,),
+            )
+            # 0 — такой строки не было. 1 — строка удалена.
+            removed = cur.rowcount
+    if removed == 0:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "нет такой траты"},
+        )
+    return {"ok": True}

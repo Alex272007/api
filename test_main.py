@@ -89,3 +89,62 @@ def test_totals_without_database():
     food = next(item for item in response.json() if item["category"] == "еда")
     assert food["total"] == 100
     assert isinstance(food["total"], (int, float))
+
+
+def test_delete_expense_removed():
+    """DELETE удаляет строку: rowcount 1, ответ 200, база home не открывается."""
+    expense_id = 7
+    cursor = MagicMock()
+    cursor.rowcount = 1
+    cursor.__exit__.return_value = False
+
+    # with psycopg.connect(...) as conn / with conn.cursor() as cur
+    connection = MagicMock()
+    connection.__enter__.return_value = connection
+    connection.__exit__.return_value = False
+    connection.cursor.return_value.__enter__.return_value = cursor
+    connection.cursor.return_value.__exit__.return_value = False
+
+    with patch("main.psycopg.connect", return_value=connection) as connect:
+        response = client.delete(f"/expenses/{expense_id}")
+
+    # До живой базы запрос не дошёл: вызван только подменённый connect.
+    connect.assert_called_once_with("dbname=home")
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+    query, params = cursor.execute.call_args[0]
+    assert "DELETE" in query
+    assert "%s" in query
+    assert params == (expense_id,)
+    # id передан параметром, а не вставлен в текст запроса.
+    assert str(expense_id) not in query
+
+
+def test_delete_expense_missing():
+    """DELETE без строки: rowcount 0, ответ 404, база home не открывается."""
+    expense_id = 7
+    cursor = MagicMock()
+    cursor.rowcount = 0
+    cursor.__exit__.return_value = False
+
+    # with psycopg.connect(...) as conn / with conn.cursor() as cur
+    connection = MagicMock()
+    connection.__enter__.return_value = connection
+    connection.__exit__.return_value = False
+    connection.cursor.return_value.__enter__.return_value = cursor
+    connection.cursor.return_value.__exit__.return_value = False
+
+    with patch("main.psycopg.connect", return_value=connection) as connect:
+        response = client.delete(f"/expenses/{expense_id}")
+
+    # До живой базы запрос не дошёл: вызван только подменённый connect.
+    connect.assert_called_once_with("dbname=home")
+    assert response.status_code == 404
+    assert response.json() == {"error": "нет такой траты"}
+
+    query, params = cursor.execute.call_args[0]
+    assert "DELETE" in query
+    assert "%s" in query
+    assert params == (expense_id,)
+    assert str(expense_id) not in query
