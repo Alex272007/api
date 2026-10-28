@@ -1,4 +1,4 @@
-# API: проверка, что сервер жив, список трат, новая трата и удаление (база home).
+# API: проверка, что сервер жив, список трат, новая трата, правка и удаление (база home).
 import os
 import psycopg
 from datetime import date
@@ -134,6 +134,71 @@ def delete_expense(expense_id: int):
             # 0 — такой строки не было. 1 — строка удалена.
             removed = cur.rowcount
     if removed == 0:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "нет такой траты"},
+        )
+    return {"ok": True}
+
+
+@app.patch("/expenses/{expense_id}")
+def patch_expense(expense_id: int, body: dict):
+    """Поменять сумму, категорию или обе. Пустое тело — 400. Нет строки — 404."""
+    # Совсем пустое тело — менять нечего, в базу не идём.
+    if not body:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "нечего менять"},
+        )
+
+    # В SET попадут только колонки, которые пришли. Имена колонок — наши, не из JSON.
+    assignments = []
+    params = []
+
+    if "amount" in body:
+        amount = body.get("amount")
+        # Не число или нуль и меньше — не записываем. bool в JSON — не сумма.
+        if isinstance(amount, bool) or not isinstance(amount, (int, float)) or amount <= 0:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "нужно число больше нуля"},
+            )
+        assignments.append("amount = %s")
+        params.append(amount)
+
+    if "category" in body:
+        category = body.get("category")
+        # Пустая категория — не записываем.
+        if not isinstance(category, str) or not category.strip():
+            return JSONResponse(
+                status_code=400,
+                content={"error": "нужна категория"},
+            )
+        assignments.append("category = %s")
+        params.append(category.strip())
+
+    # В теле были другие ключи, суммы и категории нет.
+    if not assignments:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "нечего менять"},
+        )
+
+    params.append(expense_id)
+
+    # Подключаемся к базе home.
+    # Пользователь — текущий системный, пароль в файле не храним.
+    # with закроет соединение и сохранит UPDATE, если ошибок не было.
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            # Плейсхолдеры %s: значения передаём отдельно, не склеиваем запрос.
+            cur.execute(
+                "UPDATE expenses SET " + ", ".join(assignments) + " WHERE id = %s",
+                tuple(params),
+            )
+            # 0 — такой строки не было. 1 — строка изменена.
+            updated = cur.rowcount
+    if updated == 0:
         return JSONResponse(
             status_code=404,
             content={"error": "нет такой траты"},

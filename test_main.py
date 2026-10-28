@@ -148,3 +148,84 @@ def test_delete_expense_missing():
     assert "%s" in query
     assert params == (expense_id,)
     assert str(expense_id) not in query
+
+
+def test_patch_zero_amount_skips_database():
+    """Нулевая сумма на PATCH — 400, до базы не ходим."""
+    with patch("main.psycopg.connect") as connect:
+        response = client.patch("/expenses/7", json={"amount": 0})
+
+    connect.assert_not_called()
+    assert response.status_code == 400
+    assert response.json() == {"error": "нужно число больше нуля"}
+
+
+def test_patch_empty_body_skips_database():
+    """Пустое тело PATCH — нечего менять, до базы не ходим."""
+    with patch("main.psycopg.connect") as connect:
+        response = client.patch("/expenses/7", json={})
+
+    connect.assert_not_called()
+    assert response.status_code == 400
+    assert response.json() == {"error": "нечего менять"}
+
+
+def test_patch_amount_updated():
+    """PATCH суммы: rowcount 1, ответ 200, в UPDATE только amount и плейсхолдеры."""
+    expense_id = 7
+    cursor = MagicMock()
+    cursor.rowcount = 1
+    cursor.__exit__.return_value = False
+
+    # with psycopg.connect(...) as conn / with conn.cursor() as cur
+    connection = MagicMock()
+    connection.__enter__.return_value = connection
+    connection.__exit__.return_value = False
+    connection.cursor.return_value.__enter__.return_value = cursor
+    connection.cursor.return_value.__exit__.return_value = False
+
+    with patch("main.psycopg.connect", return_value=connection) as connect:
+        response = client.patch(f"/expenses/{expense_id}", json={"amount": 15})
+
+    # До живой базы запрос не дошёл: вызван только подменённый connect.
+    connect.assert_called_once_with("dbname=home")
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+    query, params = cursor.execute.call_args[0]
+    assert "UPDATE" in query
+    assert "amount = %s" in query
+    assert "category" not in query
+    assert "%s" in query
+    assert params == (15, expense_id)
+    # Сумма и id переданы параметрами, а не вставлены в текст запроса.
+    assert "15" not in query
+    assert str(expense_id) not in query
+
+
+def test_patch_expense_missing():
+    """PATCH без строки: rowcount 0, ответ 404, база home не открывается."""
+    expense_id = 7
+    cursor = MagicMock()
+    cursor.rowcount = 0
+    cursor.__exit__.return_value = False
+
+    # with psycopg.connect(...) as conn / with conn.cursor() as cur
+    connection = MagicMock()
+    connection.__enter__.return_value = connection
+    connection.__exit__.return_value = False
+    connection.cursor.return_value.__enter__.return_value = cursor
+    connection.cursor.return_value.__exit__.return_value = False
+
+    with patch("main.psycopg.connect", return_value=connection) as connect:
+        response = client.patch(f"/expenses/{expense_id}", json={"amount": 15})
+
+    # До живой базы запрос не дошёл: вызван только подменённый connect.
+    connect.assert_called_once_with("dbname=home")
+    assert response.status_code == 404
+    assert response.json() == {"error": "нет такой траты"}
+
+    query, params = cursor.execute.call_args[0]
+    assert "UPDATE" in query
+    assert "%s" in query
+    assert params == (15, expense_id)
