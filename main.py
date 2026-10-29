@@ -1,4 +1,4 @@
-# API: проверка, что сервер жив, список трат, новая трата, правка и удаление (база home).
+# API: проверка, что сервер жив, список трат, одна трата, новая трата, правка и удаление (база home).
 import os
 import psycopg
 from datetime import date
@@ -56,6 +56,39 @@ def expenses(category: str | None = None):
                     }
                 )
             return rows
+
+
+@app.get("/expenses/{expense_id}")
+def expense(expense_id: int):
+    """Одна трата по id. Нет такой строки — 404, не список."""
+    # Подключаемся к базе home.
+    # Пользователь — текущий системный, пароль в файле не храним.
+    # with закроет соединение сам.
+    with psycopg.connect(database_url()) as conn:
+        with conn.cursor() as cur:
+            # Плейсхолдер %s: id передаём отдельно, не склеиваем запрос.
+            cur.execute(
+                """
+                SELECT id, spent_on, amount, category
+                FROM expenses
+                WHERE id = %s
+                """,
+                (expense_id,),
+            )
+            row = cur.fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "нет такой траты"},
+        )
+    row_id, spent_on, amount, row_category = row
+    # Дата и Decimal сами в JSON не превращаются.
+    return {
+        "id": row_id,
+        "spent_on": str(spent_on),
+        "amount": float(amount),
+        "category": row_category,
+    }
 
 
 @app.post("/expenses", status_code=201)

@@ -229,3 +229,62 @@ def test_patch_expense_missing():
     assert "UPDATE" in query
     assert "%s" in query
     assert params == (15, expense_id)
+
+
+def test_expense_by_id():
+    """GET одной траты: строка нашлась, 200 и один объект, не список."""
+    expense_id = 7
+    # id, сегодняшняя дата, сумма, категория.
+    fake_row = (expense_id, date.today(), 10, "еда")
+    cursor = MagicMock()
+    cursor.fetchone.return_value = fake_row
+    cursor.__exit__.return_value = False
+
+    # with psycopg.connect(...) as conn / with conn.cursor() as cur
+    connection = MagicMock()
+    connection.__enter__.return_value = connection
+    connection.__exit__.return_value = False
+    connection.cursor.return_value.__enter__.return_value = cursor
+    connection.cursor.return_value.__exit__.return_value = False
+
+    with patch("main.psycopg.connect", return_value=connection) as connect:
+        response = client.get(f"/expenses/{expense_id}")
+
+    # До живой базы запрос не дошёл: вызван только подменённый connect.
+    connect.assert_called_once_with("dbname=home")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == expense_id
+    assert body["category"] == "еда"
+    assert isinstance(body, dict)
+
+    query, params = cursor.execute.call_args[0]
+    assert "SELECT" in query
+    assert "%s" in query
+    assert params == (expense_id,)
+    # id передан параметром, а не вставлен в текст запроса.
+    assert str(expense_id) not in query
+
+
+def test_expense_by_id_missing():
+    """GET одной траты: пустой fetchone — 404, база home не открывается."""
+    expense_id = 7
+    cursor = MagicMock()
+    cursor.fetchone.return_value = None
+    cursor.__exit__.return_value = False
+
+    # with psycopg.connect(...) as conn / with conn.cursor() as cur
+    connection = MagicMock()
+    connection.__enter__.return_value = connection
+    connection.__exit__.return_value = False
+    connection.cursor.return_value.__enter__.return_value = cursor
+    connection.cursor.return_value.__exit__.return_value = False
+
+    with patch("main.psycopg.connect", return_value=connection) as connect:
+        response = client.get(f"/expenses/{expense_id}")
+
+    # До живой базы запрос не дошёл: вызван только подменённый connect.
+    connect.assert_called_once_with("dbname=home")
+    assert response.status_code == 404
+    assert response.json() == {"error": "нет такой траты"}
+    cursor.fetchone.assert_called_once()
